@@ -157,13 +157,13 @@ func main() {
 		fmt.Printf("Prompt failed %v\n", err)
 		return
 	}
-
+	accountName := accountsMap[strings.Split(selectedAccount, ":")[0]]
+	accountID := accountsMap[strings.Split(selectedAccount, ":")[1]]
 	// TODO - make this a bit nicer!!
-	color.Yellow("Logging into account %s with role %s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
+	color.Yellow("Logging into account %s(%s) with role %s", accountName, accountID, selectedRole)
 	// generatedArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
 	// fmt.Printf("\nDEBUG: Using this arn%s\n", generatedArn)
-	accountName := accountsMap[strings.Split(selectedAccount, ":")[0]]
-	// accountID := accountsMap[strings.Split(selectedAccount, ":")[1]]
+
 	if SAML_PROVIDER_NAME == "" {
 		SAML_PROVIDER_NAME = "google"
 	}
