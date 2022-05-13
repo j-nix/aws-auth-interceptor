@@ -1,5 +1,5 @@
 # aws-auth-interceptor
-Intercepts previously logged in AWS sessions by attaching to google chrome via remote devtools. Returns a list of available accounts/roles for login.
+Intercepts previously authenticated SSO sessions by attaching to google chrome via remote devtools. Returns a list of available accounts/roles for login into AWS.
 
 Attaches to an authenticated session, intercepts the samlResponse and gathers a list of available accounts/roles.
 
