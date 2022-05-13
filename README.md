@@ -15,6 +15,7 @@ The below has been tested with google SSO - others are untested thus far.
 
 AWS_LOGIN_URL = The SSO link which provides access to the AWS login landing page, authenticating your session.
 `export AWS_LOGIN_URL=https://your.sso.link.here.com`
+`export AWS_SAML_PROVIDER_NAME=your-saml-provider-name-here` (the last part of the arn)
 
 `go run main.go` (will build soon)
 # TODOs

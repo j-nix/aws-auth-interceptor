@@ -24,7 +24,8 @@ import (
 )
 
 var (
-	URL = os.Getenv("AWS_LOGIN_URL")
+	URL                = os.Getenv("AWS_LOGIN_URL")
+	SAML_PROVIDER_NAME = os.Getenv("AWS_SAML_PROVIDER_NAME")
 )
 
 func main() {
@@ -89,13 +90,6 @@ func main() {
 	if err != nil {
 	}
 
-	//Change to just SAML resp
-	inputElements, err := c.DOM.QuerySelectorAll(ctx, dom.NewQuerySelectorAllArgs(doc.Root.NodeID, "input"))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
 	// Get the outer HTML for the page.
 	result, err := c.DOM.GetOuterHTML(ctx, &dom.GetOuterHTMLArgs{
 		NodeID: &doc.Root.NodeID,
@@ -120,8 +114,15 @@ func main() {
 		}
 	}
 
+	//Change to just SAML resp
+	samlResponseNode, err := c.DOM.QuerySelector(ctx, dom.NewQuerySelectorArgs(doc.Root.NodeID, "input[name=\"SAMLResponse\"]"))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	samlresp, err := c.DOM.DescribeNode(ctx, &dom.DescribeNodeArgs{
-		NodeID: &inputElements.NodeIDs[1],
+		NodeID: &samlResponseNode.NodeID,
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -147,6 +148,8 @@ func main() {
 
 	rolePrompt := promptui.Select{
 		Label: "Select role (note if you do not have access, this will not authenticate.)",
+		// TODO - get this dynamically - there is a WIP of this traversing the DOM in another branch
+		// Change the available roles here manually for testing out
 		Items: []string{"users/admin-user", "users/developer-user"},
 	}
 	_, selectedRole, err := rolePrompt.Run()
@@ -161,9 +164,12 @@ func main() {
 	// fmt.Printf("\nDEBUG: Using this arn%s\n", generatedArn)
 	accountName := accountsMap[strings.Split(selectedAccount, ":")[0]]
 	// accountID := accountsMap[strings.Split(selectedAccount, ":")[1]]
-	err = awsLogin(samlResponse, accountName, selectedRole, "google")
+	if SAML_PROVIDER_NAME == "" {
+		SAML_PROVIDER_NAME = "google"
+	}
+	err = awsLogin(samlResponse, accountName, selectedRole, SAML_PROVIDER_NAME)
 	if err != nil {
-		color.Red("\n✘ Saml provider not found for this account under name \"google\"")
+		color.Red(fmt.Sprintf("\n✘ Saml provider not found for this account under name \"%s\"", SAML_PROVIDER_NAME))
 		color.Red("✘ Trying provider named \"g\" as is sometimes found in legacy accounts...")
 		err = awsLogin(samlResponse, accountName, selectedRole, "g")
 		if err != nil {
