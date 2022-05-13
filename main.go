@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/fatih/color"
 	"github.com/mafredri/cdp"
 	"github.com/mafredri/cdp/devtool"
 	"github.com/mafredri/cdp/protocol/dom"
 	"github.com/mafredri/cdp/protocol/page"
 	"github.com/mafredri/cdp/rpcc"
+	"github.com/manifoldco/promptui"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -165,171 +168,87 @@ func main() {
 	if err != nil {
 	}
 
-	accountNodes, err := c.DOM.QuerySelectorAll(ctx, &dom.QuerySelectorAllArgs{doc.Root.NodeID, "div .saml-account-name"})
+	//Change to just SAML resp
+	inputElements, err := c.DOM.QuerySelectorAll(ctx, dom.NewQuerySelectorAllArgs(doc.Root.NodeID, "input"))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	accountData := []Account{}
 
-	for _, accountNodeId := range accountNodes.NodeIDs {
-		fmt.Printf("\naccountNodeId is %v", accountNodeId)
-		accountName, err := c.DOM.GetOuterHTML(ctx, &dom.GetOuterHTMLArgs{
-			NodeID: &accountNodeId,
-		})
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Printf("\n\naccountName is %v\n\n", accountName)
+	// Get the outer HTML for the page.
+	result, err := c.DOM.GetOuterHTML(ctx, &dom.GetOuterHTMLArgs{
+		NodeID: &doc.Root.NodeID,
+	})
+	if err != nil {
+	}
 
-		// This below statement does NOT work
-		accountRoleNodes, err := c.DOM.QuerySelectorAll(ctx, &dom.QuerySelectorAllArgs{40, "div .saml-role-description"})
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Printf("Got these accountRoleNodes %#v", accountRoleNodes)
-		for _, roleNodeId := range accountRoleNodes.NodeIDs {
-			fmt.Printf("got hafa")
-			fmt.Printf("roleNodeId is %v", roleNodeId)
-			accountName, err := c.DOM.GetOuterHTML(ctx, &dom.GetOuterHTMLArgs{
-				NodeID: &accountNodeId,
-			})
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+	// fmt.Printf("HTML: %s\n", result.OuterHTML)
+	accountsMap := make(map[string]string)
+	accountsList := []string{}
 
-			roleName, err := c.DOM.GetOuterHTML(ctx, &dom.GetOuterHTMLArgs{
-				NodeID: &roleNodeId,
-			})
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			fmt.Printf("accountName is %v roleName is %v", accountName, roleName)
-			accountData = append(accountData, Account{
-				Name: accountName.OuterHTML,
-				Roles: struct {
-					Name string
-					ID   string
-				}{
-					Name: roleName.OuterHTML,
-					ID:   roleName.OuterHTML,
-				},
-			}, Account{})
+	// hacky workaround to get account names, until we can get the div properly!
+	for _, line := range strings.Split(strings.TrimSuffix(result.OuterHTML, "\n"), "\n") {
+		if strings.Contains(line, "div class=\"saml-account-name\"") {
+			name := strings.Fields(strings.TrimSpace(line))[2]
+			id := strings.Fields(strings.TrimSpace(line))[3]
+			tmp := strings.ReplaceAll(id, "</div>", "")
+			tmp2 := strings.ReplaceAll(tmp, "(", "")
+			cleanedId := strings.ReplaceAll(tmp2, ")", "")
+			accountsMap[name] = cleanedId
+			accountsList = append(accountsList, fmt.Sprintf("%s:%s", name, cleanedId))
 		}
 	}
-	fmt.Printf("\n\n FINAL OUTPUT %#v", accountData)
 
-	// Change to just SAML resp
-	// inputElements, err := c.DOM.QuerySelectorAll(ctx, dom.NewQuerySelectorAllArgs(doc.Root.NodeID, "input"))
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
+	samlresp, err := c.DOM.DescribeNode(ctx, &dom.DescribeNodeArgs{
+		NodeID: &inputElements.NodeIDs[1],
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	// // divElements, err := c.DOM.QuerySelectorAll(ctx, dom.NewQuerySelectorAllArgs(doc.Root.NodeID, "div"))
-	// // if err != nil {
-	// // 	fmt.Println(err)
-	// // 	return
-	// // }
+	var samlResponse string
+	if contains(samlresp.Node.Attributes, "SAMLResponse") {
+		// hacky clean up
+		samlResponse = samlresp.Node.Attributes[len(samlresp.Node.Attributes)-1]
+	}
 
-	// // Get the outer HTML for the page.
-	// result, err := c.DOM.GetOuterHTML(ctx, &dom.GetOuterHTMLArgs{
-	// 	NodeID: &doc.Root.NodeID,
-	// })
-	// if err != nil {
-	// }
+	accountPrompt := promptui.Select{
+		Label: "Select Account",
+		Items: accountsList,
+	}
 
-	// // fmt.Printf("HTML: %s\n", result.OuterHTML)
-	// accountsMap := make(map[string]string)
-	// accountsList := []string{}
+	_, selectedAccount, err := accountPrompt.Run()
+	if err != nil {
+		fmt.Printf("Prompt failed %v\n", err)
+		return
+	}
 
-	// // hacky workaround to get account names, until we can get the div properly!
-	// for _, line := range strings.Split(strings.TrimSuffix(result.OuterHTML, "\n"), "\n") {
-	// 	if strings.Contains(line, "div class=\"saml-account-name\"") {
-	// 		name := strings.Fields(strings.TrimSpace(line))[2]
-	// 		id := strings.Fields(strings.TrimSpace(line))[3]
-	// 		tmp := strings.ReplaceAll(id, "</div>", "")
-	// 		tmp2 := strings.ReplaceAll(tmp, "(", "")
-	// 		cleanedId := strings.ReplaceAll(tmp2, ")", "")
-	// 		accountsMap[name] = cleanedId
-	// 		accountsList = append(accountsList, fmt.Sprintf("%s:%s", name, cleanedId))
-	// 		// fmt.Println(strings.Fields(strings.TrimSpace(line)))
-	// 	}
-	// }
-	// // fmt.Printf("Names: \n%s", accountsMap)
+	rolePrompt := promptui.Select{
+		Label: "Select role (note if you do not have access, this will not authenticate.)",
+		Items: []string{"users/admin-user", "users/developer-user"},
+	}
+	_, selectedRole, err := rolePrompt.Run()
+	if err != nil {
+		fmt.Printf("Prompt failed %v\n", err)
+		return
+	}
 
-	// // Now hack and get roles you can assume per account
-	// // fmt.Printf("SamlResp? %s\n", inputElements.NodeIDs)
-	// // for i, _ := range divElements.NodeIDs {
-	// // 	// Show nodes here
-	// // 	element, err := c.DOM.DescribeNode(ctx, &dom.DescribeNodeArgs{
-	// // 		NodeID: &divElements.NodeIDs[i],
-	// // 	})
-	// // 	if err != nil {
-	// // 		fmt.Println(err)
-	// // 		return
-	// // 	}
-
-	// // 	fmt.Printf("%d it is %#v", i, element)
-	// // }
-
-	// samlresp, err := c.DOM.DescribeNode(ctx, &dom.DescribeNodeArgs{
-	// 	NodeID: &inputElements.NodeIDs[1],
-	// })
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-
-	// // Get the samlresponse here
-	// var samlResponse string
-	// if contains(samlresp.Node.Attributes, "SAMLResponse") {
-	// 	// hacky clean up
-	// 	samlResponse = samlresp.Node.Attributes[len(samlresp.Node.Attributes)-1]
-	// }
-	// // fmt.Printf("SamlResponse is %s", samlResponse)
-
-	// // select stuff
-	// accountPrompt := promptui.Select{
-	// 	Label: "Select Account",
-	// 	Items: accountsList,
-	// }
-
-	// _, selectedAccount, err := accountPrompt.Run()
-	// if err != nil {
-	// 	fmt.Printf("Prompt failed %v\n", err)
-	// 	return
-	// }
-
-	// rolePrompt := promptui.Select{
-	// 	Label: "Select role (note if you do not have access, this will not authenticate.)",
-	// 	Items: []string{"users/admin-user", "users/developer-user"},
-	// }
-	// _, selectedRole, err := rolePrompt.Run()
-	// if err != nil {
-	// 	fmt.Printf("Prompt failed %v\n", err)
-	// 	return
-	// }
-
-	// // TODO - make this a bit nicer!!
-	// color.Yellow("Logging into account %s with role %s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
-	// // generatedArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
-	// // fmt.Printf("\nDEBUG: Using this arn%s\n", generatedArn)
-	// err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole, "google")
-	// if err != nil {
-	// 	color.Red("\n✘ Saml provider not found for this account under name \"google\"")
-	// 	color.Red("✘ Trying provider named \"g\" as is sometimes found in legacy accounts...")
-	// 	err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole, "g")
-	// 	if err != nil {
-	// 		color.Red("✘ Login failure! %s", err)
-	// 		os.Exit(1)
-	// 	}
-	// }
-	// color.Green("✔ Logged in!")
+	// TODO - make this a bit nicer!!
+	color.Yellow("Logging into account %s with role %s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
+	// generatedArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
+	// fmt.Printf("\nDEBUG: Using this arn%s\n", generatedArn)
+	err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole, "google")
+	if err != nil {
+		color.Red("\n✘ Saml provider not found for this account under name \"google\"")
+		color.Red("✘ Trying provider named \"g\" as is sometimes found in legacy accounts...")
+		err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole, "g")
+		if err != nil {
+			color.Red("✘ Login failure! %s", err)
+			os.Exit(1)
+		}
+	}
+	color.Green("✔ Logged in!")
 	// TODO - also get a list of all roles we can assume from their tags
 }
 
