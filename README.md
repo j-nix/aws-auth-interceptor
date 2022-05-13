@@ -12,6 +12,8 @@ Make sure Google Chrome is running with remote devtools enabled
 Ensure you are already authenticated with your SSO (e.g - clicking through to the AWS SSO link shows the account login landing page)
 
 The below has been tested with google SSO - others are untested thus far.
+
+AWS_LOGIN_URL = The SSO link which provides access to the AWS login landing page, authenticating your session.
 `export AWS_LOGIN_URL=https://your.sso.link.here.com`
 
 `go run main.go` (will build soon)
