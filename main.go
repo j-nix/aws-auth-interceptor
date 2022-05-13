@@ -113,6 +113,7 @@ func main() {
 			accountsList = append(accountsList, fmt.Sprintf("%s:%s", name, cleanedId))
 		}
 	}
+	fmt.Printf("Accounts map is %#v", accountsMap)
 
 	//Change to just SAML resp
 	samlResponseNode, err := c.DOM.QuerySelector(ctx, dom.NewQuerySelectorArgs(doc.Root.NodeID, "input[name=\"SAMLResponse\"]"))
@@ -145,6 +146,8 @@ func main() {
 		fmt.Printf("Prompt failed %v\n", err)
 		return
 	}
+	selectedAccountName := strings.Split(selectedAccount, ":")[0]
+	selectedAccountID := strings.Split(selectedAccount, ":")[1]
 
 	rolePrompt := promptui.Select{
 		Label: "Select role (note if you do not have access, this will not authenticate.)",
@@ -157,21 +160,19 @@ func main() {
 		fmt.Printf("Prompt failed %v\n", err)
 		return
 	}
-	accountName := accountsMap[strings.Split(selectedAccount, ":")[0]]
-	accountID := accountsMap[strings.Split(selectedAccount, ":")[1]]
 	// TODO - make this a bit nicer!!
-	color.Yellow("Logging into account %s(%s) with role %s", accountName, accountID, selectedRole)
-	// generatedArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
+	color.Yellow("Logging into account %s(%s) with role %s", selectedAccountName, selectedAccountID, selectedRole)
+	// generatedArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", selectedAccountID, selectedRole)
 	// fmt.Printf("\nDEBUG: Using this arn%s\n", generatedArn)
 
 	if SAML_PROVIDER_NAME == "" {
 		SAML_PROVIDER_NAME = "google"
 	}
-	err = awsLogin(samlResponse, accountName, selectedRole, SAML_PROVIDER_NAME)
+	err = awsLogin(samlResponse, selectedAccountID, selectedRole, SAML_PROVIDER_NAME)
 	if err != nil {
 		color.Red(fmt.Sprintf("\n✘ Saml provider not found for this account under name \"%s\"", SAML_PROVIDER_NAME))
 		color.Red("✘ Trying provider named \"g\" as is sometimes found in legacy accounts...")
-		err = awsLogin(samlResponse, accountName, selectedRole, "g")
+		err = awsLogin(samlResponse, selectedAccountID, selectedRole, "g")
 		if err != nil {
 			color.Red("✘ Login failure! %s", err)
 			os.Exit(1)
