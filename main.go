@@ -23,41 +23,12 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Cookie represents a browser cookie.
-type Cookie struct {
-	URL   string `json:"url"`
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-type Account struct {
-	Name  string
-	Roles struct {
-		Name string
-		ID   string
-	}
-}
-
-// DocumentInfo contains information about the document.
-type DocumentInfo struct {
-	Title string `json:"title"`
-}
-
 var (
 	URL = os.Getenv("AWS_LOGIN_URL")
 )
 
 func main() {
-	// cmd := exec.Command("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--remote-debugging-port=9222")
-	// // cmd := exec.Command("killall 'Google Chrome' && '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' --remote-debugging-port=9222 &")
-	// stdout, err := cmd.Output()
-
-	// if err != nil {
-	// 	fmt.Println(err.Error())
-	// }
-
-	// // Print the output
-	// fmt.Println(string(stdout))
+	// Check if env var set
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -114,56 +85,6 @@ func main() {
 	}
 	fmt.Printf("Navigated to: %s\n", URL)
 
-	// TODO - maybe we can use the javascript stuff here to grab something!
-	// Parse information from the document by evaluating JavaScript.
-
-	// TODO tomorrow - we can probably create this array with JS, if not try and extract with the below using go
-	// don't forget it
-	// expression := `
-	// 			var nodes = document.querySelectorAll(".saml-account-name, .saml-role-description")
-	// 			var list = [].slice.call(nodes)
-	//             list.map(function(e) { return e.innerText; }).join(":")
-	// 			// list.forEach(item => map1.set(item,item.innerText));
-	// `
-	// evalArgs := runtime.NewEvaluateArgs(expression).SetAwaitPromise(true).SetReturnByValue(true)
-	// eval, err := c.Runtime.Evaluate(ctx, evalArgs)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-	// roles := fmt.Sprintf("%s", eval)
-	// // hacky workaround to get account names, until we can get the div properly!
-	// for _, line := range strings.Split(roles, ":") {
-	// 	if strings.Contains(line, "Account") {
-	// 		fmt.Println(line)
-	// 	}
-	// }
-
-	// Fetch the document root node.
-	// doc, err := c.DOM.GetDocument(ctx, nil)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-	// WIP for the dom elements
-
-	// test, err := c.DOM.DescribeNode(ctx, &dom.DescribeNodeArgs{
-	// 	NodeID: &divElements.NodeIDs[5],
-	// })
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-	// fmt.Printf("it is %#v", test.Node)
-	// fmt.Printf("it is %#v", test.Node.NodeID)
-
-	// for now we can create a list of available roles/accounts
-	// better to get it dynamic in the future
-
-	// THIS PART BELOW DOES CREATE A MAP OF ACCOUNTS -> ACCOUNT IDS BUT IT'S HACKY
-	// IT'D BE BETTER IF WE CAN USE THE NATIVE DOM ELEMENTS AND GET NESTED ROLES FOR EACH
-	// Fetch the document root node. We can pass nil here
-	// since this method only takes optional arguments.
 	doc, err := c.DOM.GetDocument(ctx, nil)
 	if err != nil {
 	}
@@ -238,11 +159,11 @@ func main() {
 	color.Yellow("Logging into account %s with role %s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
 	// generatedArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
 	// fmt.Printf("\nDEBUG: Using this arn%s\n", generatedArn)
-	err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole, "google")
+	err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], accountsMap[strings.Split(selectedAccount, ":")[1]], selectedRole, "google")
 	if err != nil {
 		color.Red("\n✘ Saml provider not found for this account under name \"google\"")
 		color.Red("✘ Trying provider named \"g\" as is sometimes found in legacy accounts...")
-		err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole, "g")
+		err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], accountsMap[strings.Split(selectedAccount, ":")[1]], selectedRole, "g")
 		if err != nil {
 			color.Red("✘ Login failure! %s", err)
 			os.Exit(1)
@@ -252,12 +173,12 @@ func main() {
 	// TODO - also get a list of all roles we can assume from their tags
 }
 
-func awsLogin(samlResponse string, account, role, providerName string) error {
+func awsLogin(samlResponse string, accountId, accountName, role, providerName string) error {
 	svc := sts.New(session.New())
 	input := &sts.AssumeRoleWithSAMLInput{
 		DurationSeconds: aws.Int64(3600),
-		PrincipalArn:    aws.String(fmt.Sprintf("arn:aws:iam::%s:saml-provider/%s", account, providerName)),
-		RoleArn:         aws.String(fmt.Sprintf("arn:aws:iam::%s:role/%s", account, role)),
+		PrincipalArn:    aws.String(fmt.Sprintf("arn:aws:iam::%s:saml-provider/%s", accountId, providerName)),
+		RoleArn:         aws.String(fmt.Sprintf("arn:aws:iam::%s:role/%s", accountId, role)),
 		SAMLAssertion:   aws.String(samlResponse),
 	}
 
@@ -273,25 +194,7 @@ func awsLogin(samlResponse string, account, role, providerName string) error {
 			// Message from an error.
 			return err
 		}
-		return nil
 	}
-	// We can write a file here if we really want to - but let's instead use the commands?
-	// file, _ := json.MarshalIndent(result, "", " ")
-
-	// f, err := os.Create("/tmp/aws-auth")
-
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// defer f.Close()
-	// _, err2 := f.WriteString(fmt.Sprintf("%s", file))
-
-	// if err2 != nil {
-	// 	log.Fatal(err2)
-	// }
-	// fmt.Printf("Written creds to temp file /tmp/aws-auth\n")
-	// Clean up
 	cmd := exec.Command("aws", "configure", "set", "aws_access_key_id", *result.Credentials.AccessKeyId)
 	_, err = cmd.Output()
 
