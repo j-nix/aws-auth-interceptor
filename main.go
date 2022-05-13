@@ -28,7 +28,7 @@ var (
 )
 
 func main() {
-	// Check if env var set
+	// TODO: Check if env var set
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -159,11 +159,13 @@ func main() {
 	color.Yellow("Logging into account %s with role %s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
 	// generatedArn := fmt.Sprintf("arn:aws:iam::%s:role/%s", accountsMap[strings.Split(selectedAccount, ":")[0]], selectedRole)
 	// fmt.Printf("\nDEBUG: Using this arn%s\n", generatedArn)
-	err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], accountsMap[strings.Split(selectedAccount, ":")[1]], selectedRole, "google")
+	accountName := accountsMap[strings.Split(selectedAccount, ":")[0]]
+	// accountID := accountsMap[strings.Split(selectedAccount, ":")[1]]
+	err = awsLogin(samlResponse, accountName, selectedRole, "google")
 	if err != nil {
 		color.Red("\n✘ Saml provider not found for this account under name \"google\"")
 		color.Red("✘ Trying provider named \"g\" as is sometimes found in legacy accounts...")
-		err = awsLogin(samlResponse, accountsMap[strings.Split(selectedAccount, ":")[0]], accountsMap[strings.Split(selectedAccount, ":")[1]], selectedRole, "g")
+		err = awsLogin(samlResponse, accountName, selectedRole, "g")
 		if err != nil {
 			color.Red("✘ Login failure! %s", err)
 			os.Exit(1)
@@ -173,7 +175,7 @@ func main() {
 	// TODO - also get a list of all roles we can assume from their tags
 }
 
-func awsLogin(samlResponse string, accountId, accountName, role, providerName string) error {
+func awsLogin(samlResponse string, accountId, role, providerName string) error {
 	svc := sts.New(session.New())
 	input := &sts.AssumeRoleWithSAMLInput{
 		DurationSeconds: aws.Int64(3600),
